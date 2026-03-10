@@ -104,31 +104,48 @@ mkdir -p "$VAULT_DIR"/{entries,files,projects,meta,backups}
 if [[ -x "$INSTALL_DIR/bin/vaultdeck" ]]; then
   mkdir -p "$HOME/.local/bin"
   ln -sf "$INSTALL_DIR/bin/vaultdeck" "$HOME/.local/bin/vaultdeck"
+  chmod +x "$HOME/.local/bin/vaultdeck" || true
   echo "Linked CLI: $HOME/.local/bin/vaultdeck"
 fi
 
+# macOS often uses ~/.zprofile or ~/.bash_profile for login shells.
+RC_CANDIDATES=("$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile")
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
-for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
-  if [[ -f "$rc" ]]; then
-    if ! grep -Eq '(^|[[:space:]])export[[:space:]]+PATH="\$HOME/\.local/bin:\$PATH"' "$rc"; then
-      echo "$PATH_LINE" >> "$rc"
-      echo "Added ~/.local/bin PATH to $rc"
-    fi
+
+for rc in "${RC_CANDIDATES[@]}"; do
+  [[ -f "$rc" ]] || continue
+  if ! grep -Eq '(^|[[:space:]])export[[:space:]]+PATH="\$HOME/\.local/bin:\$PATH"' "$rc"; then
+    echo "$PATH_LINE" >> "$rc"
+    echo "Added ~/.local/bin PATH to $rc"
   fi
 done
 
+# If no rc file existed, create one based on current shell.
+if ! ls "$HOME"/.zshrc "$HOME"/.zprofile "$HOME"/.bashrc "$HOME"/.bash_profile "$HOME"/.profile >/dev/null 2>&1; then
+  TARGET_RC="$HOME/.zshrc"
+  [[ "${SHELL:-}" == *"bash"* ]] && TARGET_RC="$HOME/.bashrc"
+  touch "$TARGET_RC"
+  echo "$PATH_LINE" >> "$TARGET_RC"
+  echo "Created $TARGET_RC and added ~/.local/bin PATH"
+fi
+
 SOURCE_LINE='[ -f "$HOME/.vaultdeck/.env.exports.sh" ] && source "$HOME/.vaultdeck/.env.exports.sh"'
 if [[ "$INSTALL_HOOK" == "1" ]]; then
-  if [[ -f "$HOME/.zshrc" ]]; then
-    grep -Fq "$SOURCE_LINE" "$HOME/.zshrc" || echo "$SOURCE_LINE" >> "$HOME/.zshrc"
-    echo "Added VaultDeck hook to ~/.zshrc"
-  elif [[ -f "$HOME/.bashrc" ]]; then
-    grep -Fq "$SOURCE_LINE" "$HOME/.bashrc" || echo "$SOURCE_LINE" >> "$HOME/.bashrc"
-    echo "Added VaultDeck hook to ~/.bashrc"
-  else
-    echo "No ~/.zshrc or ~/.bashrc found. Add this manually:"
-    echo "$SOURCE_LINE"
+  HOOK_RC=""
+  for rc in "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if [[ -f "$rc" ]]; then
+      HOOK_RC="$rc"
+      break
+    fi
+  done
+  if [[ -z "$HOOK_RC" ]]; then
+    HOOK_RC="$HOME/.zshrc"
+    [[ "${SHELL:-}" == *"bash"* ]] && HOOK_RC="$HOME/.bashrc"
+    touch "$HOOK_RC"
   fi
+
+  grep -Fq "$SOURCE_LINE" "$HOOK_RC" || echo "$SOURCE_LINE" >> "$HOOK_RC"
+  echo "Added VaultDeck hook to $HOOK_RC"
 else
   echo "Shell hook not auto-installed (safe default)."
   echo "If desired, add manually:"

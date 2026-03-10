@@ -30,8 +30,27 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files / generated exports
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# VaultDeck local vault data (never commit)
+.vaultdeck/
+.vaultdeck/**
+~/.vaultdeck
+.env.generated
+.env.exports.sh
+**/.env.generated
+**/.env.exports.sh
+
+# credential / secret artifacts
+*credentials*.json
+*credential*.json
+*client_secret*.json
+*private_key*
+*id_rsa*
 
 # vercel
 .vercel

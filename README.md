@@ -1,36 +1,193 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VaultDeck
 
-## Getting Started
+VaultDeck is a local-first secrets manager and environment control panel for developers who want a single source of truth for API keys, tokens, and project configuration.
 
-First, run the development server:
+## Overview
+
+VaultDeck is a personal developer tool that manages API keys, tokens, OAuth credentials, and environment variables in one place. Instead of scattering secrets across `.env` files, config files, and random folders, VaultDeck stores everything in a structured local vault and generates environment files on demand.
+
+It provides a clean web interface for managing secrets and a system that can generate environment variables for shells and projects.
+
+Design philosophy:
+
+- local-first
+- developer controlled
+- simple infrastructure
+- readable storage
+- no cloud dependency
+
+The source of truth is a hidden local vault directory:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+~/.vaultdeck
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Why VaultDeck Exists
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Developers running many local projects usually hit the same problems:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- API keys scattered across repos
+- duplicated `.env` files everywhere
+- resetting keys because values get lost
+- credential files living in random folders
+- painful machine switching and environment setup
 
-## Learn More
+VaultDeck solves this by centralizing secrets into one local vault and generating environment variables as needed per workflow.
 
-To learn more about Next.js, take a look at the following resources:
+## Key Features
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Local Secrets Vault
+Stores API keys, tokens, credentials, and configuration in a structured vault directory.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Web Interface
+Clean UI for creating, editing, organizing, and searching secrets.
 
-## Deploy on Vercel
+### Environment Generation
+Automatically generates `.env` and shell export files from stored entries.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Project Organization
+Group secrets by project to keep environments organized.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Credential File Storage
+Securely store files such as OAuth client JSON credentials.
+
+### Copy + Reveal Controls
+Secret values are masked by default and can be revealed or copied when needed.
+
+### Local-First Design
+Everything runs locally and the vault directory is fully inspectable.
+
+### No Cloud Dependency
+Secrets are never sent to external services.
+
+## Vault Directory Structure
+
+```text
+~/.vaultdeck/
+├── entries/
+├── files/
+├── projects/
+├── meta/
+├── backups/
+├── .env.generated
+└── .env.exports.sh
+```
+
+- **entries/**  
+  Stores secret entries and metadata for environment variables.
+
+- **files/**  
+  Stores uploaded credential files like OAuth client configs.
+
+- **projects/**  
+  Stores project-related configuration or project-specific env groupings.
+
+- **meta/**  
+  Internal metadata used by the application.
+
+- **backups/**  
+  Local snapshots and generated env backups.
+
+- **.env.generated**  
+  Standard environment file generated from stored secrets.
+
+- **.env.exports.sh**  
+  Shell-compatible export file used to load variables into terminal sessions.
+
+## How Environment Variables Work
+
+VaultDeck generates two formats from vault entries.
+
+Example `.env.generated`:
+
+```env
+OPENAI_API_KEY=sk-xxxxx
+BRAVE_API_KEY=xxxxx
+```
+
+Example `.env.exports.sh`:
+
+```bash
+export OPENAI_API_KEY="sk-xxxxx"
+export BRAVE_API_KEY="xxxxx"
+```
+
+The shell export file can be sourced in shell configuration:
+
+```bash
+source "$HOME/.vaultdeck/.env.exports.sh"
+```
+
+Once sourced, VaultDeck variables are available in terminal sessions.
+
+## Shell Integration
+
+Add this line to `~/.zshrc` or `~/.bashrc`:
+
+```bash
+[ -f "$HOME/.vaultdeck/.env.exports.sh" ] && source "$HOME/.vaultdeck/.env.exports.sh"
+```
+
+This loads VaultDeck variables whenever a shell starts.
+
+## Security Model (Current)
+
+VaultDeck is currently designed for local development environments and does **not** yet implement encrypted storage.
+
+Current protections include:
+
+- local filesystem storage
+- restricted file permissions
+- masked secrets in the UI
+- secrets excluded from git
+- no external transmission of secrets
+
+Planned hardening includes encryption-at-rest and vault unlock mechanisms.
+
+## Running VaultDeck
+
+1. Clone the repository
+2. Install dependencies
+3. Run the development server
+4. Open the web interface
+
+```bash
+git clone <your-repo-url>
+cd VaultDeck
+npm install
+npm run dev
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+## CLI Quick Checks
+
+```bash
+vaultdeck status
+vaultdeck regen
+vaultdeck doctor
+eval "$(vaultdeck apply --regen)"
+```
+
+`vaultdeck doctor` runs baseline local safety checks (permissions + env generation health).
+
+## Roadmap
+
+- encryption at rest
+- vault unlock/passphrase system
+- CLI interface expansion
+- project-specific `.env` generation
+- automatic key rotation helpers
+- secret scanning
+- backup + restore tools
+- Tailscale vault sync
+
+## Philosophy
+
+VaultDeck is built to keep secret management under developer control: local, inspectable, and practical. No required cloud service, no heavy infrastructure, no black box.
+
+The goal is simple: one reliable source of truth for local development environments.

@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "vaultdeck:status": "./bin/vaultdeck status",
+    "vaultdeck:regen": "./bin/vaultdeck regen",
+    "vaultdeck:doctor": "./bin/vaultdeck doctor",
+    "vaultdeck:shell-line": "./bin/vaultdeck shell-line"
   },
   "dependencies": {
     "next": "16.1.6",

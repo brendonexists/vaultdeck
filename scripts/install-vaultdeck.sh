@@ -48,6 +48,7 @@ Options:
 Examples:
   bash install-vaultdeck.sh --repo https://github.com/yourname/vaultdeck.git
   bash install-vaultdeck.sh --repo https://github.com/yourname/vaultdeck.git --install-hook
+  bash install-vaultdeck.sh --repo https://github.com/yourname/vaultdeck.git --install-hook --auto-apply-regen
 HELP
       exit 0
       ;;
@@ -136,26 +137,47 @@ if ! ls "$HOME"/.zshrc "$HOME"/.zprofile "$HOME"/.bashrc "$HOME"/.bash_profile "
 fi
 
 SOURCE_LINE='[ -f "$HOME/.vaultdeck/.env.exports.sh" ] && source "$HOME/.vaultdeck/.env.exports.sh"'
-if [[ "$INSTALL_HOOK" == "1" ]]; then
-  HOOK_RC=""
-  for rc in "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
-    if [[ -f "$rc" ]]; then
-      HOOK_RC="$rc"
-      break
-    fi
-  done
-  if [[ -z "$HOOK_RC" ]]; then
-    HOOK_RC="$HOME/.zshrc"
-    [[ "${SHELL:-}" == *"bash"* ]] && HOOK_RC="$HOME/.bashrc"
-    touch "$HOOK_RC"
+HOOK_RC=""
+for rc in "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+  if [[ -f "$rc" ]]; then
+    HOOK_RC="$rc"
+    break
   fi
+done
+if [[ -z "$HOOK_RC" ]]; then
+  HOOK_RC="$HOME/.zshrc"
+  [[ "${SHELL:-}" == *"bash"* ]] && HOOK_RC="$HOME/.bashrc"
+  touch "$HOOK_RC"
+fi
 
+if [[ "$INSTALL_HOOK" == "1" ]]; then
   grep -Fq "$SOURCE_LINE" "$HOOK_RC" || echo "$SOURCE_LINE" >> "$HOOK_RC"
   echo "Added VaultDeck hook to $HOOK_RC"
 else
   echo "Shell hook not auto-installed (safe default)."
   echo "If desired, add manually:"
   echo "$SOURCE_LINE"
+fi
+
+if [[ "$AUTO_APPLY_REGEN" == "1" ]]; then
+  if ! grep -Fq '# >>> vaultdeck auto-apply regen >>>' "$HOOK_RC"; then
+    cat >> "$HOOK_RC" <<'EOF'
+# >>> vaultdeck auto-apply regen >>>
+vaultdeck() {
+  command vaultdeck "$@"
+  local rc=$?
+  if [ $rc -eq 0 ] && [ "${1:-}" = "regen" ]; then
+    eval "$(command vaultdeck apply)"
+    echo "VaultDeck env reloaded into current shell."
+  fi
+  return $rc
+}
+# <<< vaultdeck auto-apply regen <<<
+EOF
+    echo "Added auto-apply wrapper to $HOOK_RC"
+  else
+    echo "Auto-apply wrapper already present in $HOOK_RC"
+  fi
 fi
 
 if [[ -x "$INSTALL_DIR/bin/vaultdeck" ]]; then

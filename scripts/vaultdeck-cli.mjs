@@ -8,6 +8,9 @@ import { spawn, execSync } from "node:child_process";
 import net from "node:net";
 
 const VAULT = process.env.VAULTDECK_HOME || path.join(os.homedir(), ".vaultdeck");
+const ENV_D_DIR = path.join(os.homedir(), ".config", "environment.d");
+const GLOBAL_ENV_PATH = path.join(ENV_D_DIR, "90-vaultdeck.conf");
+
 const PATHS = {
   entries: path.join(VAULT, "entries"),
   files: path.join(VAULT, "files"),
@@ -17,6 +20,8 @@ const PATHS = {
   envGenerated: path.join(VAULT, ".env.generated"),
   envExports: path.join(VAULT, ".env.exports.sh"),
   envMeta: path.join(VAULT, "meta", "env-generation.json"),
+  settings: path.join(VAULT, "meta", "settings.json"),
+  globalEnv: GLOBAL_ENV_PATH,
 };
 
 const SHELL_LINE = '[ -f "$HOME/.vaultdeck/.env.exports.sh" ] && source "$HOME/.vaultdeck/.env.exports.sh"';
@@ -25,10 +30,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, "..");
 const PACKAGE_JSON = path.join(PROJECT_ROOT, "package.json");
+const PROJECT_SETTINGS_FILE = path.join(PROJECT_ROOT, "vaultdeck.settings.json");
 const UI_PID_FILE = path.join(VAULT, "meta", "ui.pid");
 const UI_LOG_FILE = path.join(VAULT, "meta", "ui.log");
 const UI_STATE_FILE = path.join(VAULT, "meta", "ui-state.json");
+const UI_START_LOCK_FILE = path.join(VAULT, "meta", "ui-start.lock");
 const UPDATE_STATE_FILE = path.join(VAULT, "meta", "update-check.json");
+const DEFAULT_UI_PORT = 3000;
+const DEFAULT_UI_HOST = "127.0.0.1";
 
 const VERSION = (() => {
   try {
@@ -40,11 +49,16 @@ const VERSION = (() => {
 
 function ensure() {
   for (const dir of [PATHS.entries, PATHS.files, PATHS.projects, PATHS.meta, PATHS.backups]) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(dir, 0o700); } catch {}
   }
-  if (!fs.existsSync(PATHS.envGenerated)) fs.writeFileSync(PATHS.envGenerated, "", "utf8");
-  if (!fs.existsSync(PATHS.envExports)) fs.writeFileSync(PATHS.envExports, "", "utf8");
-  if (!fs.existsSync(PATHS.envMeta)) fs.writeFileSync(PATHS.envMeta, "{}\n", "utf8");
+  fs.mkdirSync(ENV_D_DIR, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(ENV_D_DIR, 0o700); } catch {}
+
+  if (!fs.existsSync(PATHS.envGenerated)) fs.writeFileSync(PATHS.envGenerated, "", { encoding: "utf8", mode: 0o600 });
+  if (!fs.existsSync(PATHS.envExports)) fs.writeFileSync(PATHS.envExports, "", { encoding: "utf8", mode: 0o600 });
+  if (!fs.existsSync(PATHS.envMeta)) fs.writeFileSync(PATHS.envMeta, "{}\n", { encoding: "utf8", mode: 0o600 });
+  if (!fs.existsSync(PATHS.settings)) fs.writeFileSync(PATHS.settings, "{}\n", { encoding: "utf8", mode: 0o600 });
 }
 
 function readJSON(file, fallback = {}) {
@@ -55,6 +69,25 @@ function readJSON(file, fallback = {}) {
   }
 }
 
+function readProjectSettings() {
+  return readJSON(PROJECT_SETTINGS_FILE, {});
+}
+
+function writeJSON(file, value) {
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function getSettings() {
+  const s = readJSON(PATHS.settings, {});
+  return { globalEnv: { enabled: s?.globalEnv?.enabled === true } };
+}
+
+function setGlobalEnabled(enabled) {
+  const s = readJSON(PATHS.settings, {});
+  s.globalEnv = { ...(s.globalEnv || {}), enabled };
+  writeJSON(PATHS.settings, s);
+}
+
 function sanitizeKey(input) {
   return (input || "")
     .trim()
@@ -62,6 +95,14 @@ function sanitizeKey(input) {
     .replace(/[^A-Z0-9_]/g, "_")
     .replace(/_+/g, "_")
     .replace(/^[^A-Z_]+/, "");
+}
+
+function posixSafeKey(key) {
+  return /^[A-Z_][A-Z0-9_]*$/.test(key);
+}
+
+function envdQuote(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
 }
 
 function shellQuote(value) {
@@ -84,6 +125,33 @@ function loadEntries() {
   }
   out.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
   return out;
+}
+
+function backupFileIfExists(filePath, label = "global") {
+  if (!fs.existsSync(filePath)) return;
+  const old = fs.readFileSync(filePath, "utf8");
+  if (!old) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupDir = path.join(PATHS.backups, `${label}-${stamp}`);
+  fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(backupDir, path.basename(filePath)), old, { encoding: "utf8", mode: 0o600 });
+}
+
+function writeGlobalEnvFile(rows) {
+  const settings = getSettings();
+  if (!settings.globalEnv.enabled) return { enabled: false, path: PATHS.globalEnv };
+
+  const filtered = rows.filter((r) => posixSafeKey(r.key));
+  const body = ["# VaultDeck managed global env (systemd user environment.d)"]
+    .concat(filtered.map((r) => `${r.key}=${envdQuote(r.value)}`))
+    .join("\n") + "\n";
+
+  backupFileIfExists(PATHS.globalEnv, "global-env");
+  fs.writeFileSync(PATHS.globalEnv, body, { encoding: "utf8", mode: 0o600 });
+  try { fs.chmodSync(PATHS.globalEnv, 0o600); } catch {}
+
+  try { execSync("systemctl --user daemon-reload", { stdio: "ignore" }); } catch {}
+  return { enabled: true, path: PATHS.globalEnv, count: filtered.length };
 }
 
 function regen() {
@@ -147,6 +215,13 @@ function regen() {
     keys,
     removedKeys,
   };
+  const globalResult = writeGlobalEnvFile(rows);
+  meta.globalEnv = {
+    enabled: globalResult.enabled,
+    path: globalResult.path,
+    count: globalResult.count || 0,
+  };
+
   fs.writeFileSync(PATHS.envMeta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
   return meta;
 }
@@ -161,7 +236,9 @@ function status() {
   console.log(`Env-compatible entries: ${envCompatible}`);
   console.log(`Generated file: ${PATHS.envGenerated} (${fs.existsSync(PATHS.envGenerated) ? "yes" : "no"})`);
   console.log(`Exports file:   ${PATHS.envExports} (${fs.existsSync(PATHS.envExports) ? "yes" : "no"})`);
+  const settings = getSettings();
   console.log(`Last generated: ${meta.generatedAt || "never"}`);
+  console.log(`Global env mode: ${settings.globalEnv.enabled ? "enabled" : "disabled"}`);
   if (meta.duplicateKeys?.length) console.log(`Duplicate keys: ${meta.duplicateKeys.join(", ")}`);
   if (meta.invalidNames?.length) console.log(`Invalid names: ${meta.invalidNames.join(", ")}`);
   if (update.available) {
@@ -194,7 +271,8 @@ function isPidRunning(pid) {
 
 function readUiPid() {
   try {
-    return Number(fs.readFileSync(UI_PID_FILE, "utf8").trim());
+    const pid = Number(fs.readFileSync(UI_PID_FILE, "utf8").trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
     return null;
   }
@@ -202,6 +280,14 @@ function readUiPid() {
 
 function readUiState() {
   return readJSON(UI_STATE_FILE, {});
+}
+
+function getTrackedUiPid() {
+  const pidFromFile = readUiPid();
+  if (pidFromFile) return pidFromFile;
+  const state = readUiState();
+  const pidFromState = Number(state?.pid);
+  return Number.isInteger(pidFromState) && pidFromState > 0 ? pidFromState : null;
 }
 
 function writeUiState(state) {
@@ -216,25 +302,78 @@ function writeUpdateState(state) {
   fs.writeFileSync(UPDATE_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
-function isPortFree(port) {
+function isPortFree(port, host = "127.0.0.1") {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once("error", () => resolve(false));
     server.once("listening", () => server.close(() => resolve(true)));
-    server.listen(port, "127.0.0.1");
+    server.listen(port, host);
   });
 }
 
-async function findFreePort(startPort = 3000, maxPort = 3100) {
-  for (let p = startPort; p <= maxPort; p += 1) {
-    if (await isPortFree(p)) return p;
+function cleanupUiTrackingFiles() {
+  fs.rmSync(UI_PID_FILE, { force: true });
+  fs.rmSync(UI_STATE_FILE, { force: true });
+}
+
+function resolveUiPort(state = {}) {
+  const projectSettings = readProjectSettings();
+  const candidate = Number(process.env.VAULTDECK_PORT || projectSettings?.ui?.port || state.port || DEFAULT_UI_PORT);
+  if (!Number.isInteger(candidate) || candidate < 1 || candidate > 65535) return DEFAULT_UI_PORT;
+  return candidate;
+}
+
+function resolveUiHost(state = {}) {
+  const projectSettings = readProjectSettings();
+  const candidate = String(process.env.VAULTDECK_HOST || projectSettings?.ui?.host || state.host || DEFAULT_UI_HOST).trim();
+  return candidate || DEFAULT_UI_HOST;
+}
+
+function uiUrl(host, port) {
+  const displayHost = host === "0.0.0.0" ? "localhost" : host;
+  return `http://${displayHost}:${port}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPidExit(pid, timeoutMs = 5000, pollMs = 100) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidRunning(pid)) return true;
+    await sleep(pollMs);
   }
-  throw new Error(`No free port found between ${startPort}-${maxPort}`);
+  return !isPidRunning(pid);
+}
+
+function tryAcquireUiStartLock() {
+  try {
+    const fd = fs.openSync(UI_START_LOCK_FILE, "wx", 0o600);
+    fs.writeFileSync(fd, `${process.pid}\n`, { encoding: "utf8" });
+    return fd;
+  } catch {
+    try {
+      const ownerPid = Number(fs.readFileSync(UI_START_LOCK_FILE, "utf8").trim());
+      if (!Number.isInteger(ownerPid) || ownerPid < 1 || !isPidRunning(ownerPid)) {
+        fs.rmSync(UI_START_LOCK_FILE, { force: true });
+        const fd = fs.openSync(UI_START_LOCK_FILE, "wx", 0o600);
+        fs.writeFileSync(fd, `${process.pid}\n`, { encoding: "utf8" });
+        return fd;
+      }
+    } catch {}
+    return null;
+  }
+}
+
+function releaseUiStartLock(fd) {
+  try { fs.closeSync(fd); } catch {}
+  fs.rmSync(UI_START_LOCK_FILE, { force: true });
 }
 
 function uiStatus() {
   ensure();
-  const pid = readUiPid();
+  const pid = getTrackedUiPid();
   const state = readUiState();
   if (!pid) {
     console.log("UI status: stopped (no pid file)");
@@ -242,7 +381,8 @@ function uiStatus() {
   }
   if (isPidRunning(pid)) {
     console.log(`UI status: running (pid ${pid})`);
-    if (state.port) console.log(`URL: http://localhost:${state.port}`);
+    const host = state.host || resolveUiHost(state);
+    if (state.port) console.log(`URL: ${uiUrl(host, state.port)}`);
     console.log(`Log: ${UI_LOG_FILE}`);
   } else {
     console.log(`UI status: stale pid file (${pid}), process not running`);
@@ -251,68 +391,166 @@ function uiStatus() {
 
 async function startUi() {
   ensure();
-  const pid = readUiPid();
-  const state = readUiState();
-  if (pid && isPidRunning(pid)) {
-    console.log(`UI already running (pid ${pid})`);
-    if (state.port) console.log(`URL: http://localhost:${state.port}`);
+  const lockFd = tryAcquireUiStartLock();
+  if (lockFd === null) {
+    console.log("UI start is already in progress. Try again in a moment.");
+    process.exitCode = 1;
     return;
   }
 
-  const preferred = Number(process.env.VAULTDECK_PORT || state.port || 3000);
-  const port = await findFreePort(preferred, preferred + 30);
+  try {
+    const pid = getTrackedUiPid();
+    const state = readUiState();
+    if (pid && isPidRunning(pid)) {
+      console.log(`UI already running (pid ${pid})`);
+      const host = state.host || resolveUiHost(state);
+      if (state.port) console.log(`URL: ${uiUrl(host, state.port)}`);
+      return;
+    }
+    if (pid && !isPidRunning(pid)) cleanupUiTrackingFiles();
 
-  const nodeModulesPath = path.join(PROJECT_ROOT, "node_modules");
-  if (!fs.existsSync(nodeModulesPath)) {
-    console.log("Dependencies missing. Installing once before start...");
-    execSync("npm install", { cwd: PROJECT_ROOT, stdio: "inherit" });
+    const port = resolveUiPort(state);
+    const host = resolveUiHost(state);
+    if (!(await isPortFree(port, host))) {
+      console.log(`UI start failed: port ${port} is already in use.`);
+      console.log("This usually means another VaultDeck UI instance is already running.");
+      console.log(`Run \`vaultdeck stop\` first, set VAULTDECK_PORT, or edit ${PROJECT_SETTINGS_FILE}.`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const nodeModulesPath = path.join(PROJECT_ROOT, "node_modules");
+    if (!fs.existsSync(nodeModulesPath)) {
+      console.log("Dependencies missing. Installing once before start...");
+      execSync("npm install", { cwd: PROJECT_ROOT, stdio: "inherit" });
+    }
+
+    const buildIdPath = path.join(PROJECT_ROOT, ".next", "BUILD_ID");
+    if (!fs.existsSync(buildIdPath)) {
+      console.log("No production build found. Building once before start...");
+      execSync("npm run build", { cwd: PROJECT_ROOT, stdio: "inherit" });
+    }
+
+    const logFd = fs.openSync(UI_LOG_FILE, "a");
+    const child = spawn("npm", ["run", "start", "--", "--hostname", host, "--port", String(port)], {
+      cwd: PROJECT_ROOT,
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      env: { ...process.env },
+    });
+
+    child.unref();
+    fs.writeFileSync(UI_PID_FILE, `${child.pid}\n`, { encoding: "utf8", mode: 0o600 });
+    writeUiState({ pid: child.pid, host, port, startedAt: new Date().toISOString() });
+    console.log(`Started UI (pid ${child.pid})`);
+    console.log(`URL: ${uiUrl(host, port)}`);
+    console.log(`Log: ${UI_LOG_FILE}`);
+  } finally {
+    releaseUiStartLock(lockFd);
   }
-
-  const buildIdPath = path.join(PROJECT_ROOT, ".next", "BUILD_ID");
-  if (!fs.existsSync(buildIdPath)) {
-    console.log("No production build found. Building once before start...");
-    execSync("npm run build", { cwd: PROJECT_ROOT, stdio: "inherit" });
-  }
-
-  const logFd = fs.openSync(UI_LOG_FILE, "a");
-  const child = spawn("npm", ["run", "start", "--", "--hostname", "127.0.0.1", "--port", String(port)], {
-    cwd: PROJECT_ROOT,
-    detached: true,
-    stdio: ["ignore", logFd, logFd],
-    env: { ...process.env },
-  });
-
-  child.unref();
-  fs.writeFileSync(UI_PID_FILE, `${child.pid}\n`, { encoding: "utf8", mode: 0o600 });
-  writeUiState({ pid: child.pid, port, startedAt: new Date().toISOString() });
-  console.log(`Started UI (pid ${child.pid})`);
-  console.log(`URL: http://localhost:${port}`);
-  console.log(`Log: ${UI_LOG_FILE}`);
 }
 
-function stopUi() {
+async function stopUi() {
   ensure();
-  const pid = readUiPid();
+  const pid = getTrackedUiPid();
   if (!pid) {
     console.log("UI already stopped");
     return;
   }
   if (!isPidRunning(pid)) {
-    fs.rmSync(UI_PID_FILE, { force: true });
-    fs.rmSync(UI_STATE_FILE, { force: true });
+    cleanupUiTrackingFiles();
     console.log("Removed stale UI pid file");
     return;
   }
 
   try {
-    process.kill(pid, "SIGTERM");
-    fs.rmSync(UI_PID_FILE, { force: true });
-    fs.rmSync(UI_STATE_FILE, { force: true });
+    let signaled = false;
+    try {
+      process.kill(-pid, "SIGTERM");
+      signaled = true;
+    } catch {}
+    if (!signaled) process.kill(pid, "SIGTERM");
+
+    let stopped = await waitForPidExit(pid, 5000);
+    if (!stopped) {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        process.kill(pid, "SIGKILL");
+      }
+      stopped = await waitForPidExit(pid, 1500);
+    }
+
+    if (!stopped) {
+      console.log(`Could not stop UI process ${pid}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    cleanupUiTrackingFiles();
     console.log(`Stopped UI (pid ${pid})`);
   } catch {
     console.log(`Could not stop UI process ${pid}`);
     process.exitCode = 1;
   }
+}
+
+async function restartUi() {
+  await stopUi();
+  if (process.exitCode) return;
+  await startUi();
+}
+
+function systemdUserSeesKeys(keys = []) {
+  try {
+    const out = execSync("systemctl --user show-environment", {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    });
+    const present = new Set(out.split("\n").map((line) => line.split("=")[0]).filter(Boolean));
+    return keys.every((k) => present.has(k));
+  } catch {
+    return null;
+  }
+}
+
+function globalStatus() {
+  ensure();
+  const s = getSettings();
+  const meta = readJSON(PATHS.envMeta, {});
+  const keys = meta?.keys || [];
+  const managerSees = systemdUserSeesKeys(keys.slice(0, 30));
+
+  console.log(`Global env: ${s.globalEnv.enabled ? "enabled" : "disabled"}`);
+  console.log(`Global file: ${PATHS.globalEnv}`);
+  console.log(`Exists: ${fs.existsSync(PATHS.globalEnv) ? "yes" : "no"}`);
+  console.log(`Last generation: ${meta.generatedAt || "never"}`);
+  console.log(`Systemd user manager sees keys: ${managerSees === null ? "unknown" : managerSees ? "yes" : "no"}`);
+
+  if (s.globalEnv.enabled && managerSees === false) {
+    console.log("Hint: run `vaultdeck regen` then restart user services (or relogin).");
+  }
+}
+
+function globalEnable() {
+  ensure();
+  setGlobalEnabled(true);
+  const meta = regen();
+  console.log("Global environment mode enabled.");
+  console.log(`Generated: ${PATHS.globalEnv}`);
+  console.log(`Regenerated ${meta.envCount} vars. Restart user services if needed.`);
+}
+
+function globalDisable() {
+  ensure();
+  setGlobalEnabled(false);
+  if (fs.existsSync(PATHS.globalEnv)) {
+    backupFileIfExists(PATHS.globalEnv, "global-env-disabled");
+    fs.rmSync(PATHS.globalEnv, { force: true });
+  }
+  try { execSync("systemctl --user daemon-reload", { stdio: "ignore" }); } catch {}
+  console.log("Global environment mode disabled.");
+  console.log("Restart user services (or relogin) to clear inherited vars.");
 }
 
 function checkForUpdate(quiet = false) {
@@ -419,6 +657,26 @@ function doctor() {
     detail: "missing or unreadable env-generation.json",
   });
 
+  const settings = getSettings();
+  if (settings.globalEnv.enabled) {
+    checks.push({
+      name: "global env file exists when enabled",
+      ok: fs.existsSync(PATHS.globalEnv),
+      detail: `missing ${PATHS.globalEnv}`,
+    });
+    checks.push({
+      name: "global env file permissions",
+      ok: permOctal(PATHS.globalEnv) === "600",
+      detail: `expected 600, got ${permOctal(PATHS.globalEnv) ?? "missing"}`,
+    });
+    const managerSees = systemdUserSeesKeys((envMeta?.keys || []).slice(0, 20));
+    checks.push({
+      name: "systemd user manager sees sample keys",
+      ok: managerSees !== false,
+      detail: "run `vaultdeck regen` and restart user services/relogin",
+    });
+  }
+
   let okCount = 0;
   for (const c of checks) {
     if (c.ok) {
@@ -447,8 +705,10 @@ Commands:
   apply        Print exports/unsets for eval
   start        Start VaultDeck web UI in background
   stop         Stop VaultDeck web UI
+  restart      Restart VaultDeck web UI
   ui-status    Show VaultDeck web UI process status
   check-update Check if a newer commit exists on origin
+  global enable|disable|status  Manage systemd user global env mode
   update       Pull latest repo + install + build
   doctor       Run local safety checks
   shell-line   Print shell integration line
@@ -476,9 +736,18 @@ Examples:
   if (cmd === "shell-line") return void console.log(SHELL_LINE);
   if (cmd === "apply") return void apply(args.includes("--regen"));
   if (cmd === "start") return void (await startUi());
-  if (cmd === "stop") return void stopUi();
+  if (cmd === "stop") return void (await stopUi());
+  if (cmd === "restart") return void (await restartUi());
   if (cmd === "ui-status") return void uiStatus();
   if (cmd === "check-update") return void checkForUpdate(false);
+  if (cmd === "global") {
+    const sub = args[0] || "status";
+    if (sub === "enable") return void globalEnable();
+    if (sub === "disable") return void globalDisable();
+    if (sub === "status") return void globalStatus();
+    console.error("Usage: vaultdeck global <enable|disable|status>");
+    process.exit(1);
+  }
   if (cmd === "update") return void updateVaultDeck();
   if (cmd === "doctor") return void doctor();
 

@@ -130,6 +130,31 @@ Add this line to `~/.zshrc` or `~/.bashrc`:
 
 This loads VaultDeck variables whenever a shell starts.
 
+## Global env for services (systemd user)
+
+VaultDeck can also generate a user-scoped global env file for long-running services:
+
+```text
+~/.config/environment.d/90-vaultdeck.conf
+```
+
+Commands:
+
+```bash
+vaultdeck global enable
+vaultdeck global status
+vaultdeck global disable
+```
+
+How it works:
+- `global enable` turns on global mode and regenerates env files.
+- Every `vaultdeck regen` updates `90-vaultdeck.conf` when global mode is enabled.
+- Services using the systemd user manager can read these vars after service restart (or relogin in some setups).
+
+Troubleshooting:
+- If a service does not see new values, run `vaultdeck regen` then restart the service.
+- If needed, logout/login to refresh the user manager environment fully.
+
 ## Security Model (Current)
 
 VaultDeck is currently designed for local development environments and does **not** yet implement encrypted storage.
@@ -169,7 +194,9 @@ http://localhost:3000
 ```bash
 vaultdeck start
 vaultdeck ui-status
+vaultdeck restart
 vaultdeck stop
+vaultdeck global status
 vaultdeck check-update
 vaultdeck update
 vaultdeck status
@@ -179,6 +206,33 @@ eval "$(vaultdeck apply --regen)"
 ```
 
 `vaultdeck doctor` runs baseline local safety checks (permissions + env generation health).
+
+## UI Runtime Settings
+
+VaultDeck supports a project-level runtime settings file:
+
+```text
+./vaultdeck.settings.json
+```
+
+Example:
+
+```json
+{
+  "ui": {
+    "host": "127.0.0.1",
+    "port": 8120
+  }
+}
+```
+
+Override order:
+
+1. `VAULTDECK_HOST` / `VAULTDECK_PORT` environment variables
+2. `vaultdeck.settings.json`
+3. Built-in defaults (`127.0.0.1:3000`)
+
+You can edit these in the web UI at `/settings` and use start/stop/restart controls there.
 
 ## Roadmap
 

@@ -23,6 +23,10 @@ async function copyTextSafe(text: string) {
 }
 
 type Draft = Partial<VaultEntry>;
+type ProjectOption = {
+  id: string;
+  name: string;
+};
 
 function maskSecret(value: string) {
   const trimmed = value || "";
@@ -33,6 +37,7 @@ function maskSecret(value: string) {
 
 export default function EntriesPage() {
   const [entries, setEntries] = useState<VaultEntry[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [q, setQ] = useState("");
   const [showValues, setShowValues] = useState(false);
   const [draft, setDraft] = useState<Draft>({ type: "API Key", tags: [], favorite: false, includeInEnv: true });
@@ -48,6 +53,18 @@ export default function EntriesPage() {
       const res = await fetch("/api/entries");
       const data = await res.json();
       if (!cancelled) setEntries(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/projects?status=active");
+      const data = (await res.json()) as ProjectOption[];
+      if (!cancelled) setProjects(data);
     })();
     return () => {
       cancelled = true;
@@ -73,6 +90,15 @@ export default function EntriesPage() {
     await load();
   };
 
+  const onProjectChange = (value: string) => {
+    const selected = projects.find((p) => p.name.toLowerCase() === value.trim().toLowerCase());
+    setDraft({
+      ...draft,
+      project: value,
+      projectId: selected?.id,
+    });
+  };
+
   const remove = async (id: string, name: string) => {
     const ok = window.confirm(`Delete entry "${name}"? This cannot be undone.`);
     if (!ok) return;
@@ -91,7 +117,18 @@ export default function EntriesPage() {
             {VAULT_TYPES.map((type) => <option key={type}>{type}</option>)}
           </select>
           <textarea className="h-24 w-full rounded-lg bg-black/30 p-2 font-mono" placeholder="Value" value={draft.value || ""} onChange={(e) => setDraft({ ...draft, value: e.target.value })} />
-          <input className="w-full rounded-lg bg-black/30 p-2" placeholder="Project" value={draft.project || ""} onChange={(e) => setDraft({ ...draft, project: e.target.value })} />
+          <input
+            className="w-full rounded-lg bg-black/30 p-2"
+            placeholder={projects.length ? "Project (search active projects)" : "Project"}
+            value={draft.project || ""}
+            list="active-projects"
+            onChange={(e) => onProjectChange(e.target.value)}
+          />
+          <datalist id="active-projects">
+            {projects.map((project) => (
+              <option key={project.id} value={project.name} />
+            ))}
+          </datalist>
           <input className="w-full rounded-lg bg-black/30 p-2" placeholder="Tags comma separated" value={(draft.tags || []).join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()) })} />
           <textarea className="h-20 w-full rounded-lg bg-black/30 p-2" placeholder="Description" value={draft.description || ""} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
           <label className="flex items-center gap-2"><input type="checkbox" checked={!!draft.favorite} onChange={(e) => setDraft({ ...draft, favorite: e.target.checked })} /> Favorite</label>

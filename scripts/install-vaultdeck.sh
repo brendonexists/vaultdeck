@@ -103,10 +103,17 @@ echo "Installing npm dependencies..."
 npm install
 
 echo "Ensuring vault structure in: $VAULT_DIR"
+VAULT_ALREADY_EXISTS=0
+[[ -d "$VAULT_DIR" ]] && VAULT_ALREADY_EXISTS=1
 mkdir -p "$VAULT_DIR"/{entries,files,projects,meta,backups}
 : > "$VAULT_DIR/.env.generated"
 : > "$VAULT_DIR/.env.exports.sh"
 [[ -f "$VAULT_DIR/meta/env-generation.json" ]] || echo '{}' > "$VAULT_DIR/meta/env-generation.json"
+# New installs default global env enabled; existing installs keep current behavior until opt-in.
+if [[ ! -f "$VAULT_DIR/meta/settings.json" ]] && [[ "$VAULT_ALREADY_EXISTS" == "0" ]]; then
+  echo '{"globalEnv":{"enabled":true}}' > "$VAULT_DIR/meta/settings.json"
+  chmod 600 "$VAULT_DIR/meta/settings.json" || true
+fi
 
 if [[ -x "$INSTALL_DIR/bin/vaultdeck" ]]; then
   mkdir -p "$HOME/.local/bin"

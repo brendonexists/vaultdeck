@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test tests/*.test.mjs",
     "vaultdeck:status": "./bin/vaultdeck status",
     "vaultdeck:regen": "./bin/vaultdeck regen",
     "vaultdeck:doctor": "./bin/vaultdeck doctor",
@@ -14,6 +15,7 @@
     "vaultdeck:stop": "./bin/vaultdeck stop",
     "vaultdeck:ui-status": "./bin/vaultdeck ui-status",
     "vaultdeck:check-update": "./bin/vaultdeck check-update",
+    "vaultdeck:global-status": "./bin/vaultdeck global status",
     "vaultdeck:update": "./bin/vaultdeck update",
     "vaultdeck:shell-line": "./bin/vaultdeck shell-line"
   },

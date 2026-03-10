@@ -249,6 +249,12 @@ async function startUi() {
   const preferred = Number(process.env.VAULTDECK_PORT || state.port || 3000);
   const port = await findFreePort(preferred, preferred + 30);
 
+  const nodeModulesPath = path.join(PROJECT_ROOT, "node_modules");
+  if (!fs.existsSync(nodeModulesPath)) {
+    console.log("Dependencies missing. Installing once before start...");
+    execSync("npm install", { cwd: PROJECT_ROOT, stdio: "inherit" });
+  }
+
   const buildIdPath = path.join(PROJECT_ROOT, ".next", "BUILD_ID");
   if (!fs.existsSync(buildIdPath)) {
     console.log("No production build found. Building once before start...");

@@ -160,11 +160,12 @@ cat <<DONE
 
 VaultDeck install complete.
 
-Next:
-  cd "$INSTALL_DIR"
-  npm run dev
+No project-folder steps required.
 
 CLI:
+  vaultdeck start
+  vaultdeck ui-status
+  vaultdeck stop
   vaultdeck status
   vaultdeck regen
   eval "$(vaultdeck apply --regen)"

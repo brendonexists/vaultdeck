@@ -4,6 +4,8 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { spawn, execSync } from "node:child_process";
+import net from "node:net";
 
 const VAULT = process.env.VAULTDECK_HOME || path.join(os.homedir(), ".vaultdeck");
 const PATHS = {
@@ -21,7 +23,12 @@ const SHELL_LINE = '[ -f "$HOME/.vaultdeck/.env.exports.sh" ] && source "$HOME/.
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PACKAGE_JSON = path.join(__dirname, "..", "package.json");
+const PROJECT_ROOT = path.join(__dirname, "..");
+const PACKAGE_JSON = path.join(PROJECT_ROOT, "package.json");
+const UI_PID_FILE = path.join(VAULT, "meta", "ui.pid");
+const UI_LOG_FILE = path.join(VAULT, "meta", "ui.log");
+const UI_STATE_FILE = path.join(VAULT, "meta", "ui-state.json");
+
 const VERSION = (() => {
   try {
     return JSON.parse(fs.readFileSync(PACKAGE_JSON, "utf8")).version || "0.0.0";
@@ -171,6 +178,124 @@ function permOctal(filePath) {
   }
 }
 
+function isPidRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readUiPid() {
+  try {
+    return Number(fs.readFileSync(UI_PID_FILE, "utf8").trim());
+  } catch {
+    return null;
+  }
+}
+
+function readUiState() {
+  return readJSON(UI_STATE_FILE, {});
+}
+
+function writeUiState(state) {
+  fs.writeFileSync(UI_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => server.close(() => resolve(true)));
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function findFreePort(startPort = 3000, maxPort = 3100) {
+  for (let p = startPort; p <= maxPort; p += 1) {
+    if (await isPortFree(p)) return p;
+  }
+  throw new Error(`No free port found between ${startPort}-${maxPort}`);
+}
+
+function uiStatus() {
+  ensure();
+  const pid = readUiPid();
+  const state = readUiState();
+  if (!pid) {
+    console.log("UI status: stopped (no pid file)");
+    return;
+  }
+  if (isPidRunning(pid)) {
+    console.log(`UI status: running (pid ${pid})`);
+    if (state.port) console.log(`URL: http://localhost:${state.port}`);
+    console.log(`Log: ${UI_LOG_FILE}`);
+  } else {
+    console.log(`UI status: stale pid file (${pid}), process not running`);
+  }
+}
+
+async function startUi() {
+  ensure();
+  const pid = readUiPid();
+  const state = readUiState();
+  if (pid && isPidRunning(pid)) {
+    console.log(`UI already running (pid ${pid})`);
+    if (state.port) console.log(`URL: http://localhost:${state.port}`);
+    return;
+  }
+
+  const preferred = Number(process.env.VAULTDECK_PORT || state.port || 3000);
+  const port = await findFreePort(preferred, preferred + 30);
+
+  const buildIdPath = path.join(PROJECT_ROOT, ".next", "BUILD_ID");
+  if (!fs.existsSync(buildIdPath)) {
+    console.log("No production build found. Building once before start...");
+    execSync("npm run build", { cwd: PROJECT_ROOT, stdio: "inherit" });
+  }
+
+  const logFd = fs.openSync(UI_LOG_FILE, "a");
+  const child = spawn("npm", ["run", "start", "--", "--hostname", "127.0.0.1", "--port", String(port)], {
+    cwd: PROJECT_ROOT,
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: { ...process.env },
+  });
+
+  child.unref();
+  fs.writeFileSync(UI_PID_FILE, `${child.pid}\n`, { encoding: "utf8", mode: 0o600 });
+  writeUiState({ pid: child.pid, port, startedAt: new Date().toISOString() });
+  console.log(`Started UI (pid ${child.pid})`);
+  console.log(`URL: http://localhost:${port}`);
+  console.log(`Log: ${UI_LOG_FILE}`);
+}
+
+function stopUi() {
+  ensure();
+  const pid = readUiPid();
+  if (!pid) {
+    console.log("UI already stopped");
+    return;
+  }
+  if (!isPidRunning(pid)) {
+    fs.rmSync(UI_PID_FILE, { force: true });
+    fs.rmSync(UI_STATE_FILE, { force: true });
+    console.log("Removed stale UI pid file");
+    return;
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+    fs.rmSync(UI_PID_FILE, { force: true });
+    fs.rmSync(UI_STATE_FILE, { force: true });
+    console.log(`Stopped UI (pid ${pid})`);
+  } catch {
+    console.log(`Could not stop UI process ${pid}`);
+    process.exitCode = 1;
+  }
+}
+
 function doctor() {
   ensure();
   const checks = [];
@@ -212,7 +337,7 @@ function doctor() {
   if (failed > 0) process.exitCode = 1;
 }
 
-function main() {
+async function main() {
   const [, , cmd, ...args] = process.argv;
   if (!cmd || ["-h", "--help"].includes(cmd)) {
     console.log(`vaultdeck v${VERSION}
@@ -223,6 +348,9 @@ Commands:
   status       Show vault/env status
   regen        Regenerate env files
   apply        Print exports/unsets for eval
+  start        Start VaultDeck web UI in background
+  stop         Stop VaultDeck web UI
+  ui-status    Show VaultDeck web UI process status
   doctor       Run local safety checks
   shell-line   Print shell integration line
   version      Print CLI version
@@ -248,10 +376,16 @@ Examples:
   }
   if (cmd === "shell-line") return void console.log(SHELL_LINE);
   if (cmd === "apply") return void apply(args.includes("--regen"));
+  if (cmd === "start") return void (await startUi());
+  if (cmd === "stop") return void stopUi();
+  if (cmd === "ui-status") return void uiStatus();
   if (cmd === "doctor") return void doctor();
 
   console.error(`Unknown command: ${cmd}`);
   process.exit(1);
 }
 
-main();
+main().catch((err) => {
+  console.error(err?.message || String(err));
+  process.exit(1);
+});

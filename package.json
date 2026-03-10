@@ -10,6 +10,9 @@
     "vaultdeck:status": "./bin/vaultdeck status",
     "vaultdeck:regen": "./bin/vaultdeck regen",
     "vaultdeck:doctor": "./bin/vaultdeck doctor",
+    "vaultdeck:start": "./bin/vaultdeck start",
+    "vaultdeck:stop": "./bin/vaultdeck stop",
+    "vaultdeck:ui-status": "./bin/vaultdeck ui-status",
     "vaultdeck:shell-line": "./bin/vaultdeck shell-line"
   },
   "dependencies": {

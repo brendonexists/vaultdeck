@@ -167,6 +167,9 @@ http://localhost:3000
 ## CLI Quick Checks
 
 ```bash
+vaultdeck start
+vaultdeck ui-status
+vaultdeck stop
 vaultdeck status
 vaultdeck regen
 vaultdeck doctor

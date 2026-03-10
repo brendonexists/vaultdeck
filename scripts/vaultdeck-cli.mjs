@@ -28,6 +28,7 @@ const PACKAGE_JSON = path.join(PROJECT_ROOT, "package.json");
 const UI_PID_FILE = path.join(VAULT, "meta", "ui.pid");
 const UI_LOG_FILE = path.join(VAULT, "meta", "ui.log");
 const UI_STATE_FILE = path.join(VAULT, "meta", "ui-state.json");
+const UPDATE_STATE_FILE = path.join(VAULT, "meta", "update-check.json");
 
 const VERSION = (() => {
   try {
@@ -155,6 +156,7 @@ function status() {
   const entries = loadEntries();
   const envCompatible = entries.filter((e) => e.includeInEnv !== false).length;
   const meta = readJSON(PATHS.envMeta, {});
+  const update = readUpdateState();
   console.log(`Vault: ${VAULT}`);
   console.log(`Env-compatible entries: ${envCompatible}`);
   console.log(`Generated file: ${PATHS.envGenerated} (${fs.existsSync(PATHS.envGenerated) ? "yes" : "no"})`);
@@ -162,6 +164,9 @@ function status() {
   console.log(`Last generated: ${meta.generatedAt || "never"}`);
   if (meta.duplicateKeys?.length) console.log(`Duplicate keys: ${meta.duplicateKeys.join(", ")}`);
   if (meta.invalidNames?.length) console.log(`Invalid names: ${meta.invalidNames.join(", ")}`);
+  if (update.available) {
+    console.log(`Update available (${update.branch || "origin"}). Run: vaultdeck update`);
+  }
 }
 
 function apply(regenFirst = false) {
@@ -201,6 +206,14 @@ function readUiState() {
 
 function writeUiState(state) {
   fs.writeFileSync(UI_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function readUpdateState() {
+  return readJSON(UPDATE_STATE_FILE, {});
+}
+
+function writeUpdateState(state) {
+  fs.writeFileSync(UPDATE_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
 function isPortFree(port) {
@@ -302,6 +315,84 @@ function stopUi() {
   }
 }
 
+function checkForUpdate(quiet = false) {
+  ensure();
+  if (!fs.existsSync(path.join(PROJECT_ROOT, ".git"))) {
+    if (!quiet) console.log("Update check unavailable: not a git checkout.");
+    return { available: false, reason: "not-git" };
+  }
+
+  try {
+    const remoteHead = execSync("git symbolic-ref --quiet --short refs/remotes/origin/HEAD", {
+      cwd: PROJECT_ROOT,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    }).trim(); // origin/main
+
+    const branch = remoteHead.replace(/^origin\//, "") || "main";
+    execSync(`git fetch origin ${branch} --quiet`, { cwd: PROJECT_ROOT, stdio: "ignore" });
+
+    const local = execSync("git rev-parse HEAD", {
+      cwd: PROJECT_ROOT,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    }).trim();
+    const remote = execSync(`git rev-parse origin/${branch}`, {
+      cwd: PROJECT_ROOT,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    }).trim();
+
+    const available = local !== remote;
+    const result = { available, branch, local, remote, checkedAt: new Date().toISOString() };
+    writeUpdateState(result);
+
+    if (!quiet) {
+      if (available) {
+        console.log(`Update available on ${branch}.`);
+        console.log("Run: vaultdeck update");
+      } else {
+        console.log("VaultDeck is up to date.");
+      }
+    }
+
+    return result;
+  } catch {
+    const result = { available: false, reason: "check-failed", checkedAt: new Date().toISOString() };
+    writeUpdateState(result);
+    if (!quiet) console.log("Update check failed (network or git remote issue).");
+    return result;
+  }
+}
+
+function updateVaultDeck() {
+  ensure();
+
+  if (!fs.existsSync(path.join(PROJECT_ROOT, ".git"))) {
+    console.error(`Not a git repo: ${PROJECT_ROOT}`);
+    process.exit(1);
+  }
+
+  console.log(`Updating VaultDeck in: ${PROJECT_ROOT}`);
+
+  try {
+    execSync("git fetch --all --prune", { cwd: PROJECT_ROOT, stdio: "inherit" });
+    execSync("git pull --ff-only", { cwd: PROJECT_ROOT, stdio: "inherit" });
+  } catch {
+    console.error("Git update failed. If you have local changes, commit/stash first.");
+    process.exit(1);
+  }
+
+  console.log("Installing dependencies...");
+  execSync("npm install", { cwd: PROJECT_ROOT, stdio: "inherit" });
+
+  console.log("Building project...");
+  execSync("npm run build", { cwd: PROJECT_ROOT, stdio: "inherit" });
+
+  checkForUpdate(true);
+  console.log("Update complete.");
+}
+
 function doctor() {
   ensure();
   const checks = [];
@@ -357,6 +448,8 @@ Commands:
   start        Start VaultDeck web UI in background
   stop         Stop VaultDeck web UI
   ui-status    Show VaultDeck web UI process status
+  check-update Check if a newer commit exists on origin
+  update       Pull latest repo + install + build
   doctor       Run local safety checks
   shell-line   Print shell integration line
   version      Print CLI version
@@ -385,6 +478,8 @@ Examples:
   if (cmd === "start") return void (await startUi());
   if (cmd === "stop") return void stopUi();
   if (cmd === "ui-status") return void uiStatus();
+  if (cmd === "check-update") return void checkForUpdate(false);
+  if (cmd === "update") return void updateVaultDeck();
   if (cmd === "doctor") return void doctor();
 
   console.error(`Unknown command: ${cmd}`);

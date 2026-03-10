@@ -13,6 +13,8 @@
     "vaultdeck:start": "./bin/vaultdeck start",
     "vaultdeck:stop": "./bin/vaultdeck stop",
     "vaultdeck:ui-status": "./bin/vaultdeck ui-status",
+    "vaultdeck:check-update": "./bin/vaultdeck check-update",
+    "vaultdeck:update": "./bin/vaultdeck update",
     "vaultdeck:shell-line": "./bin/vaultdeck shell-line"
   },
   "dependencies": {

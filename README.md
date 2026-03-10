@@ -170,6 +170,8 @@ http://localhost:3000
 vaultdeck start
 vaultdeck ui-status
 vaultdeck stop
+vaultdeck check-update
+vaultdeck update
 vaultdeck status
 vaultdeck regen
 vaultdeck doctor

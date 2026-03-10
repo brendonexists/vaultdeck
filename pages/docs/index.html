@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VaultDeck Docs | Quickstart</title>
+    <meta name="description" content="VaultDeck quickstart and project workflow docs." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #070d14;
+        --panel: #0f1825;
+        --line: rgba(121, 151, 176, 0.28);
+        --text: #e8f2ff;
+        --muted: #9db5ca;
+        --accent: #65d8ff;
+        --ok: #75eebc;
+        --maxw: 980px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at 5% 2%, rgba(101, 216, 255, 0.2), transparent 36%),
+          radial-gradient(circle at 80% 6%, rgba(255, 165, 111, 0.15), transparent 40%),
+          #070d14;
+        color: var(--text);
+      }
+
+      .container {
+        width: min(100% - 1.6rem, var(--maxw));
+        margin-inline: auto;
+      }
+
+      header {
+        padding: 1.2rem 0 0.4rem;
+      }
+
+      .top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.8rem;
+        margin-bottom: 1rem;
+      }
+
+      .brand {
+        font-weight: 700;
+      }
+
+      .brand span {
+        color: var(--accent);
+      }
+
+      .link {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 0.92rem;
+      }
+
+      .link:hover {
+        color: var(--text);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.8rem, 5vw, 2.8rem);
+      }
+
+      .lead {
+        color: var(--muted);
+        margin: 0.55rem 0 0;
+        line-height: 1.62;
+      }
+
+      section {
+        margin-top: 1rem;
+        border: 1px solid var(--line);
+        background: rgba(15, 24, 37, 0.82);
+        border-radius: 16px;
+        padding: 1rem;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+
+      p {
+        color: var(--muted);
+      }
+
+      ol,
+      ul {
+        color: var(--muted);
+        margin: 0.65rem 0 0;
+        padding-left: 1.2rem;
+      }
+
+      li {
+        margin: 0.35rem 0;
+      }
+
+      code,
+      pre {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      pre {
+        margin: 0.7rem 0 0;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 12px;
+        background: #060b11;
+        padding: 0.8rem;
+        overflow-x: auto;
+        color: #d9eeff;
+        font-size: 0.83rem;
+        line-height: 1.5;
+      }
+
+      .note {
+        margin-top: 0.7rem;
+        border-left: 3px solid var(--ok);
+        padding: 0.55rem 0.7rem;
+        background: rgba(117, 238, 188, 0.06);
+        border-radius: 8px;
+        color: #d8fceb;
+      }
+
+      .grid {
+        display: grid;
+        gap: 0.8rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      @media (max-width: 760px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="container">
+      <div class="top">
+        <div class="brand"><span>VaultDeck</span> Docs</div>
+        <a class="link" href="../index.html">Back to Landing</a>
+      </div>
+      <h1>Quickstart</h1>
+      <p class="lead">Get VaultDeck running in minutes, then manage runtime environments per project.</p>
+    </header>
+
+    <main class="container">
+      <section id="install">
+        <h2>1. Install</h2>
+        <pre>curl -fsSL https://raw.githubusercontent.com/brendonexists/vaultdeck/main/scripts/install-vaultdeck.sh | bash -s -- --repo https://github.com/brendonexists/vaultdeck.git --install-hook</pre>
+        <p class="note">This installs VaultDeck, prepares <code>~/.vaultdeck</code>, and links the CLI in <code>~/.local/bin</code>.</p>
+      </section>
+
+      <section id="run">
+        <h2>2. Start the App</h2>
+        <pre>vaultdeck start
+vaultdeck ui-status</pre>
+        <p>Open the UI at the local address shown by <code>vaultdeck start</code>.</p>
+      </section>
+
+      <section id="first-project">
+        <h2>3. First Project Flow</h2>
+        <ol>
+          <li>Create a project in <code>Projects</code>.</li>
+          <li>Add secrets in the project <code>Secrets</code> tab.</li>
+          <li>Attach files in <code>Files</code> and create file-reference env vars if needed.</li>
+          <li>Use <code>Runtime</code> to validate exports.</li>
+          <li>Inject to shell and run your app.</li>
+        </ol>
+      </section>
+
+      <section id="commands">
+        <h2>4. Core CLI Commands</h2>
+        <div class="grid">
+          <pre>vaultdeck status
+vaultdeck regen
+eval "$(vaultdeck apply --regen)"</pre>
+          <pre>vaultdeck global enable
+vaultdeck global status
+vaultdeck global disable</pre>
+        </div>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <ul>
+          <li>If command not found: <code>export PATH="$HOME/.local/bin:$PATH"</code></li>
+          <li>If services don't get new vars: run <code>vaultdeck regen</code> and restart services.</li>
+          <li>If shell env seems stale: run <code>eval "$(vaultdeck apply --regen)"</code>.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

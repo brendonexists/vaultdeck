@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VaultDeck Docs | CLI Reference</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #070d14;
+        --panel: #0f1825;
+        --line: rgba(121, 151, 176, 0.28);
+        --text: #e8f2ff;
+        --muted: #9db5ca;
+        --accent: #65d8ff;
+        --maxw: 980px;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 8% 0%, rgba(101, 216, 255, 0.2), transparent 36%),
+          #070d14;
+      }
+
+      .container { width: min(100% - 1.6rem, var(--maxw)); margin-inline: auto; }
+
+      header { padding: 1.2rem 0 0.4rem; }
+
+      .top { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
+
+      .brand { font-weight: 700; }
+      .brand span { color: var(--accent); }
+
+      a { color: var(--muted); text-decoration: none; }
+      a:hover { color: var(--text); }
+
+      h1 { margin: 0.6rem 0 0; font-size: clamp(1.8rem, 4.5vw, 2.7rem); }
+
+      .lead { color: var(--muted); }
+
+      section {
+        margin-top: 1rem;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(15, 24, 37, 0.82);
+        padding: 1rem;
+      }
+
+      h2 { margin: 0; font-size: 1.16rem; }
+
+      .cmd {
+        margin-top: 0.6rem;
+        border: 1px solid rgba(255,255,255,0.09);
+        border-radius: 10px;
+        background: #060b11;
+        padding: 0.8rem;
+        font-family: "JetBrains Mono", monospace;
+        color: #d9eeff;
+        overflow-x: auto;
+      }
+
+      p { color: var(--muted); margin: 0.5rem 0 0; }
+    </style>
+  </head>
+  <body>
+    <header class="container">
+      <div class="top">
+        <div class="brand"><span>VaultDeck</span> CLI Docs</div>
+        <a href="./index.html">Quickstart</a>
+      </div>
+      <h1>CLI Reference</h1>
+      <p class="lead">Commands you will actually use every day.</p>
+    </header>
+
+    <main class="container">
+      <section>
+        <h2>Status + Regeneration</h2>
+        <div class="cmd">vaultdeck status
+vaultdeck regen
+eval "$(vaultdeck apply --regen)"</div>
+        <p>Use this flow when secrets changed and you need fresh shell exports.</p>
+      </section>
+
+      <section>
+        <h2>Web UI Control</h2>
+        <div class="cmd">vaultdeck start
+vaultdeck ui-status
+vaultdeck stop</div>
+        <p>Starts and stops the local UI process.</p>
+      </section>
+
+      <section>
+        <h2>Global Service Environment</h2>
+        <div class="cmd">vaultdeck global enable
+vaultdeck global status
+vaultdeck global disable</div>
+        <p>Controls the user-level environment.d integration for long-running services.</p>
+      </section>
+
+      <section>
+        <h2>Maintenance</h2>
+        <div class="cmd">vaultdeck doctor
+vaultdeck check-update
+vaultdeck update</div>
+        <p>Health checks and updates for local installs.</p>
+      </section>
+    </main>
+  </body>
+</html>

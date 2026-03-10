@@ -3,12 +3,13 @@ set -euo pipefail
 
 # VaultDeck installer
 # Usage:
-#   bash install-vaultdeck.sh [--repo <git-url>] [--dir <install-dir>] [--install-hook] [--force]
+#   bash install-vaultdeck.sh [--repo <git-url>] [--dir <install-dir>] [--install-hook] [--auto-apply-regen] [--force]
 
 REPO_URL=""
 INSTALL_DIR="${HOME}/Projects/VaultDeck"
 VAULT_DIR="${HOME}/.vaultdeck"
 INSTALL_HOOK=0
+AUTO_APPLY_REGEN=0
 FORCE=0
 
 while [[ $# -gt 0 ]]; do
@@ -25,6 +26,10 @@ while [[ $# -gt 0 ]]; do
       INSTALL_HOOK=1
       shift
       ;;
+    --auto-apply-regen)
+      AUTO_APPLY_REGEN=1
+      shift
+      ;;
     --force)
       FORCE=1
       shift
@@ -36,7 +41,8 @@ VaultDeck installer
 Options:
   --repo <git-url>    Clone from this repo URL (if --dir does not exist)
   --dir <path>        Install directory (default: ~/Projects/VaultDeck)
-  --install-hook      Add shell source line to ~/.zshrc or ~/.bashrc
+  --install-hook      Add shell source line to shell rc file
+  --auto-apply-regen  Add shell wrapper so `vaultdeck regen` auto-applies exports
   --force             Continue even if target dir exists and is non-empty
 
 Examples:
